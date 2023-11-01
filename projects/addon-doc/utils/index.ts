@@ -1,3 +1,5 @@
+export * from './attr-name';
+export * from './attr-value';
 export * from './coerce-boolean';
 export * from './coerce-value';
 export * from './generate-routes';
@@ -6,6 +8,7 @@ export * from './is-page-group';
 export * from './parse-code-block';
 export * from './raw-load';
 export * from './raw-load-record';
+export * from './render-property';
 export * from './sort-pages';
 export * from './to-flat-map-pages';
 export * from './transliterate-keyboard-layout';
