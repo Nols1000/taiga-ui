@@ -18,5 +18,6 @@ export class TuiHighlightExample4 {
         ['Sir Robin', 'The Not-Quite-So-Brave-As-Sir-Lancelot', 'Killed'],
     ];
 
-    readonly search = ['Sir', 'Arrested'];
+    /* cspell:disable-next-line */
+    readonly search = ['Sir', 'Arrested', 'killed'];
 }

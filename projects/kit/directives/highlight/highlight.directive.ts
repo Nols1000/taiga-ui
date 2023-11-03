@@ -13,30 +13,26 @@ import {
 } from '@angular/core';
 import {
     svgNodeFilter,
+    TuiArrayOrValue,
     TuiDestroyService,
     tuiIsNumber,
-    tuiIsString,
     TuiResizeService,
+    tuiToArray,
 } from '@taiga-ui/cdk';
+import {TuiToRegexpPipe} from '@taiga-ui/kit/pipes';
 import {Observable, Subject} from 'rxjs';
 import {mergeAll, switchMap, takeUntil} from 'rxjs/operators';
 
 import {TuiHighlightComponent} from './highlight.component';
-
-type TuiArrayOrValue<T> = T | readonly T[];
 
 interface TuiHighlightOccurrence {
     index: number;
     length: number;
 }
 
-function tuiToArray<T>(value: T | readonly T[]): readonly T[] {
-    return Array.isArray(value) ? value : [value];
-}
-
 @Directive({
     selector: '[tuiHighlight]',
-    providers: [TuiDestroyService, TuiResizeService],
+    providers: [TuiDestroyService, TuiResizeService, TuiToRegexpPipe],
     host: {
         '[style.position]': '"relative"',
         '[style.zIndex]': '0',
@@ -55,8 +51,7 @@ export class TuiHighlightDirective implements OnChanges {
 
     private readonly cf: ComponentFactory<TuiHighlightComponent>;
 
-    @Input()
-    tuiHighlight: TuiArrayOrValue<RegExp | string> = '';
+    private _tuiHighlight: readonly RegExp[] = [];
 
     /**
      * @deprecated Use --tui-highlight-color instead. Remove in 4.0.
@@ -68,9 +63,6 @@ export class TuiHighlightDirective implements OnChanges {
     @Input()
     tuiHighlightMultiOccurrences = false;
 
-    @Input()
-    tuiHighlightCaseSensitive = false;
-
     constructor(
         @Inject(DOCUMENT) private readonly doc: Document,
         @Inject(ElementRef) private readonly el: ElementRef<HTMLElement>,
@@ -78,6 +70,7 @@ export class TuiHighlightDirective implements OnChanges {
         @Self() @Inject(TuiDestroyService) destroy$: Observable<void>,
         @Inject(ViewContainerRef) private readonly vcr: ViewContainerRef,
         @Inject(ComponentFactoryResolver) cfr: ComponentFactoryResolver,
+        @Inject(TuiToRegexpPipe) private readonly toRegexpPipe: TuiToRegexpPipe,
     ) {
         resize$.subscribe(() => {
             this.updateHighlights();
@@ -91,6 +84,26 @@ export class TuiHighlightDirective implements OnChanges {
             .subscribe();
 
         this.cf = cfr.resolveComponentFactory(TuiHighlightComponent);
+    }
+
+    get tuiHighlight(): TuiArrayOrValue<RegExp | string> {
+        return this._tuiHighlight;
+    }
+
+    @Input()
+    set tuiHighlight(value: TuiArrayOrValue<RegExp | string>) {
+        this._tuiHighlight = tuiToArray(value).map(item => {
+            if (item instanceof RegExp) {
+                // Only global regexp's can be used in String.prototype.mathAll method
+                if (!item.global) {
+                    return new RegExp(item.source, `${item.flags}g`);
+                }
+
+                return item;
+            }
+
+            return this.toRegexpPipe.transform(item, 'gi');
+        });
     }
 
     get match(): boolean {
@@ -145,35 +158,39 @@ export class TuiHighlightDirective implements OnChanges {
     }
 
     private *getOccurrences(source: string | null): Generator<TuiHighlightOccurrence> {
-        if (!source || !this.tuiHighlight) {
+        if (!source || !this._tuiHighlight.length) {
             return;
         }
 
-        for (const item of tuiToArray(this.tuiHighlight)) {
-            if (tuiIsString(item)) {
-                const itemValue = this.tuiHighlightCaseSensitive
-                    ? item
-                    : item.toLowerCase();
-                const sourceValue = this.tuiHighlightCaseSensitive
-                    ? source
-                    : source.toLowerCase();
+        const range: boolean[] = [];
 
-                for (
-                    let index = sourceValue.indexOf(itemValue);
-                    index >= 0;
-                    index = sourceValue.indexOf(itemValue, index + 1)
-                ) {
-                    yield {
-                        index,
-                        length: itemValue.length,
-                    };
-                }
-            } else {
-                for (const match of source.matchAll(item)) {
-                    if (tuiIsNumber(match.index) && match.length) {
+        for (const item of this._tuiHighlight) {
+            for (const match of source.matchAll(item)) {
+                if (tuiIsNumber(match.index) && match[0].length) {
+                    let length = 0;
+                    let index = match.index;
+
+                    for (let i = match.index; i < match.index + match[0].length; i++) {
+                        if (range[i]) {
+                            if (length > 0) {
+                                yield {
+                                    index,
+                                    length,
+                                };
+                            }
+
+                            index = i + 1;
+                            length = 0;
+                        } else {
+                            range[i] = true;
+                            length++;
+                        }
+                    }
+
+                    if (length > 0) {
                         yield {
-                            index: match.index,
-                            length: match[0].length,
+                            index,
+                            length,
                         };
                     }
                 }

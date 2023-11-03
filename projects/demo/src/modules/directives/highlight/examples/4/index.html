@@ -1,6 +1,6 @@
 <table
     class="tui-space_top-4"
-    [tuiHighlight]="search"
+    [tuiHighlight]="search | tuiToRegexp"
     [tuiHighlightColor]="'#228B22'"
     [tuiHighlightMultiOccurrences]="true"
 >
