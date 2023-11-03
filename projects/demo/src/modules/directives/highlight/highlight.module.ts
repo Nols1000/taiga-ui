@@ -7,6 +7,9 @@ import {TuiTextfieldControllerModule} from '@taiga-ui/core';
 import {TuiHighlightModule, TuiInputModule} from '@taiga-ui/kit';
 
 import {TuiHighlightExample1} from './examples/1';
+import {TuiHighlightExample2} from './examples/2';
+import {TuiHighlightExample3} from './examples/3';
+import {TuiHighlightExample4} from './examples/4';
 import {ExampleTuiHighlightComponent} from './highlight.component';
 
 @NgModule({
@@ -19,7 +22,13 @@ import {ExampleTuiHighlightComponent} from './highlight.component';
         RouterModule.forChild(tuiGenerateRoutes(ExampleTuiHighlightComponent)),
         TuiTextfieldControllerModule,
     ],
-    declarations: [ExampleTuiHighlightComponent, TuiHighlightExample1],
+    declarations: [
+        ExampleTuiHighlightComponent,
+        TuiHighlightExample1,
+        TuiHighlightExample2,
+        TuiHighlightExample3,
+        TuiHighlightExample4,
+    ],
     exports: [ExampleTuiHighlightComponent],
 })
 export class ExampleTuiHighlightModule {}
