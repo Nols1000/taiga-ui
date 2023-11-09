@@ -51,7 +51,7 @@ export class TuiHighlightDirective implements OnChanges {
 
     private readonly cf: ComponentFactory<TuiHighlightComponent>;
 
-    private _tuiHighlight: readonly RegExp[] = [];
+    private patterns: readonly RegExp[] = [];
 
     /**
      * @deprecated Use --tui-highlight-color instead. Remove in 4.0.
@@ -87,12 +87,12 @@ export class TuiHighlightDirective implements OnChanges {
     }
 
     get tuiHighlight(): TuiArrayOrValue<RegExp | string> {
-        return this._tuiHighlight;
+        return this.patterns;
     }
 
     @Input()
     set tuiHighlight(value: TuiArrayOrValue<RegExp | string>) {
-        this._tuiHighlight = tuiToArray(value).map(item => {
+        this.patterns = tuiToArray(value).map(item => {
             if (item instanceof RegExp) {
                 // Only global regexp's can be used in String.prototype.mathAll method
                 if (!item.global) {
@@ -125,13 +125,17 @@ export class TuiHighlightDirective implements OnChanges {
 
         const hostRect = this.el.nativeElement.getBoundingClientRect();
 
-        for (const range of this.getRanges()) {
-            this.addHighlight$.next(
-                this.createHighlight(hostRect, range.getBoundingClientRect()),
-            );
+        for (const node of this.getNodes()) {
+            for (const occurrence of this.getOccurrences(node.nodeValue)) {
+                const range = this.createRange(node, occurrence);
 
-            if (!this.tuiHighlightMultiOccurrences) {
-                return;
+                this.addHighlight$.next(
+                    this.createHighlight(hostRect, range.getBoundingClientRect()),
+                );
+
+                if (!this.tuiHighlightMultiOccurrences) {
+                    return;
+                }
             }
         }
     }
@@ -157,56 +161,28 @@ export class TuiHighlightDirective implements OnChanges {
         });
     }
 
+    private createRange(node: Node, {index, length}: TuiHighlightOccurrence): Range {
+        const range = this.doc.createRange();
+
+        range.setStart(node, index);
+        range.setEnd(node, index + length);
+
+        return range;
+    }
+
     private *getOccurrences(source: string | null): Generator<TuiHighlightOccurrence> {
-        if (!source || !this._tuiHighlight.length) {
+        if (!source || !this.patterns.length) {
             return;
         }
 
-        const range: boolean[] = [];
-
-        for (const item of this._tuiHighlight) {
+        for (const item of this.patterns) {
             for (const match of source.matchAll(item)) {
-                if (tuiIsNumber(match.index) && match[0].length) {
-                    let length = 0;
-                    let index = match.index;
-
-                    for (let i = match.index; i < match.index + match[0].length; i++) {
-                        if (range[i]) {
-                            if (length > 0) {
-                                yield {
-                                    index,
-                                    length,
-                                };
-                            }
-
-                            index = i + 1;
-                            length = 0;
-                        } else {
-                            range[i] = true;
-                            length++;
-                        }
-                    }
-
-                    if (length > 0) {
-                        yield {
-                            index,
-                            length,
-                        };
-                    }
+                if (tuiIsNumber(match.index) && match.length) {
+                    yield {
+                        index: match.index,
+                        length: match[0].length,
+                    };
                 }
-            }
-        }
-    }
-
-    private *getRanges(): Generator<Range> {
-        for (const node of this.getNodes()) {
-            for (const {index, length} of this.getOccurrences(node.nodeValue)) {
-                const range = this.doc.createRange();
-
-                range.setStart(node, index);
-                range.setEnd(node, index + length);
-
-                yield range;
             }
         }
     }
