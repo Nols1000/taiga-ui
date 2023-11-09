@@ -20,8 +20,8 @@ import {
     tuiToArray,
 } from '@taiga-ui/cdk';
 import {TuiToRegexpPipe} from '@taiga-ui/kit/pipes';
-import {Observable, Subject} from 'rxjs';
-import {mergeAll, switchMap, takeUntil} from 'rxjs/operators';
+import {merge, Observable, Subject} from 'rxjs';
+import {switchMap, takeUntil} from 'rxjs/operators';
 
 import {TuiHighlightComponent} from './highlight.component';
 
@@ -45,9 +45,7 @@ export class TuiHighlightDirective implements OnChanges {
         svgNodeFilter,
     );
 
-    private readonly clearHighlights$ = new Subject<void>();
-
-    private readonly addHighlight$ = new Subject<Observable<never>>();
+    private readonly highlight$ = new Subject<ReadonlyArray<Observable<never>>>();
 
     private readonly cf: ComponentFactory<TuiHighlightComponent>;
 
@@ -76,9 +74,9 @@ export class TuiHighlightDirective implements OnChanges {
             this.updateHighlights();
         });
 
-        this.clearHighlights$
+        this.highlight$
             .pipe(
-                switchMap(() => this.addHighlight$.pipe(mergeAll())),
+                switchMap(highlights => merge(...highlights)),
                 takeUntil(destroy$),
             )
             .subscribe();
@@ -117,33 +115,90 @@ export class TuiHighlightDirective implements OnChanges {
     }
 
     private updateHighlights(): void {
-        this.clearHighlights$.next();
-
         if (!this.match) {
             return;
         }
 
-        const hostRect = this.el.nativeElement.getBoundingClientRect();
-
-        for (const node of this.getNodes()) {
-            for (const occurrence of this.getOccurrences(node.nodeValue)) {
-                const range = this.createRange(node, occurrence);
-
-                this.addHighlight$.next(
-                    this.createHighlight(hostRect, range.getBoundingClientRect()),
-                );
-
-                if (!this.tuiHighlightMultiOccurrences) {
-                    return;
-                }
-            }
-        }
+        this.highlight$.next(this.createHighlights());
     }
 
-    private createHighlight(
-        hostRect: DOMRect,
-        {left, top, width, height}: DOMRect,
-    ): Observable<never> {
+    private createHighlights(): ReadonlyArray<Observable<never>> {
+        const hostRect = this.el.nativeElement.getBoundingClientRect();
+
+        const highlights: Array<Observable<never>> = [];
+
+        for (const node of this.getNodes()) {
+            const occurrences: TuiHighlightOccurrence[] = [];
+
+            for (const occurrence of this.getOccurrences(node.nodeValue)) {
+                if (!this.tuiHighlightMultiOccurrences) {
+                    return [
+                        this.createHighlight(
+                            hostRect,
+                            this.createRange(node, occurrence),
+                        ),
+                    ];
+                }
+
+                occurrences[occurrence.index] = occurrence;
+            }
+
+            if (!occurrences.length) {
+                continue;
+            }
+
+            const mergedOccurrences: TuiHighlightOccurrence[] = [];
+
+            for (const occurrence of occurrences) {
+                if (!occurrence) {
+                    continue;
+                }
+
+                const lastMergedOccurrence = mergedOccurrences.at(-1);
+
+                if (
+                    lastMergedOccurrence &&
+                    occurrence.index <=
+                        lastMergedOccurrence.index + lastMergedOccurrence.length
+                ) {
+                    const end = Math.max(
+                        lastMergedOccurrence.index + lastMergedOccurrence.length,
+                        occurrence.index + occurrence.length,
+                    );
+
+                    lastMergedOccurrence.length = end - lastMergedOccurrence.index;
+                } else {
+                    mergedOccurrences.push(occurrence);
+
+                    if (lastMergedOccurrence) {
+                        highlights.push(
+                            this.createHighlight(
+                                hostRect,
+                                this.createRange(node, lastMergedOccurrence),
+                            ),
+                        );
+                    }
+                }
+            }
+
+            const lastMergedOccurrence = mergedOccurrences.at(-1);
+
+            if (lastMergedOccurrence) {
+                highlights.push(
+                    this.createHighlight(
+                        hostRect,
+                        this.createRange(node, lastMergedOccurrence),
+                    ),
+                );
+            }
+        }
+
+        return highlights;
+    }
+
+    private createHighlight(hostRect: DOMRect, range: Range): Observable<never> {
+        const {left, top, width, height} = range.getBoundingClientRect();
+
         return new Observable<never>(() => {
             const ref = this.vcr.createComponent(this.cf);
             const {instance} = ref;
@@ -177,7 +232,7 @@ export class TuiHighlightDirective implements OnChanges {
 
         for (const item of this.patterns) {
             for (const match of source.matchAll(item)) {
-                if (tuiIsNumber(match.index) && match.length) {
+                if (tuiIsNumber(match.index) && match[0].length) {
                     yield {
                         index: match.index,
                         length: match[0].length,
