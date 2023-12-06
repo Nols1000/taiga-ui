@@ -65,5 +65,9 @@ export class TuiRootComponent {
         @Inject(TUI_THEME) theme: string,
     ) {
         body.setAttribute('data-tui-theme', theme.toLowerCase());
+
+        if (reducedMotion) {
+            body.parentElement?.classList.add('_reduced-motion');
+        }
     }
 }
